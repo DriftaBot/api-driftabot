@@ -1,0 +1,104 @@
+name: 'API Drift Agent'
+description: 'Detect breaking API changes in a PR and open GitHub Issues in affected consumer repos — zero config on consumer side.'
+author: 'pgomes13'
+
+branding:
+  icon: 'alert-triangle'
+  color: 'red'
+
+inputs:
+  base-schema:
+    description: 'Path to OpenAPI schema file (relative to repo root). Auto-detected if omitted.'
+    required: false
+    default: ''
+  head-schema:
+    description: 'Path to OpenAPI schema on the PR branch. Defaults to base-schema value.'
+    required: false
+    default: ''
+  org-read-token:
+    description: 'GitHub PAT with repo:read + read:org scopes. Used to search and clone private consumer repos. Falls back to GITHUB_TOKEN (public repos only).'
+    required: false
+    default: ''
+  anthropic-api-key:
+    description: 'Anthropic API key for LLM-powered impact explanations in Issues. Optional — agent runs without it.'
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Install drift-guard (latest release)
+      shell: bash
+      run: |
+        LATEST=$(curl -sSf \
+          -H "Authorization: Bearer ${{ github.token }}" \
+          https://api.github.com/repos/pgomes13/drift-guard-engine/releases/latest \
+          | grep '"tag_name"' | head -1 | cut -d'"' -f4)
+        echo "[drift-agent] drift-guard-engine release: $LATEST"
+        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+        ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64\|arm64/arm64/')
+        curl -sSfL \
+          "https://github.com/pgomes13/drift-guard-engine/releases/download/${LATEST}/drift-guard_${OS}_${ARCH}.tar.gz" \
+          | tar xz -C /usr/local/bin drift-guard
+        drift-guard --help | head -2
+
+    - name: Install drift-guard-agent
+      shell: bash
+      run: pip install --quiet drift-guard-agent
+
+    - name: Detect schema path
+      id: schema
+      shell: bash
+      run: |
+        BASE="${{ inputs.base-schema }}"
+        HEAD="${{ inputs.head-schema }}"
+        if [ -z "$BASE" ]; then
+          BASE=$(find . -maxdepth 4 \( -name "openapi.yaml" -o -name "openapi.yml" \
+            -o -name "api.yaml" -o -name "api.yml" \
+            -o -name "swagger.yaml" -o -name "swagger.yml" \) \
+            ! -path "*/node_modules/*" ! -path "*/.git/*" | head -1)
+        fi
+        if [ -z "$BASE" ]; then
+          echo "::error::No OpenAPI schema found. Set base-schema input or add openapi.yaml to the repo root."
+          exit 1
+        fi
+        [ -z "$HEAD" ] && HEAD="$BASE"
+        echo "base=$BASE" >> $GITHUB_OUTPUT
+        echo "head=$HEAD" >> $GITHUB_OUTPUT
+        echo "[drift-agent] schema: $BASE"
+
+    - name: Compare schemas
+      id: diff
+      shell: bash
+      run: |
+        git show "origin/${{ github.base_ref }}":"${{ steps.schema.outputs.base }}" \
+          > /tmp/drift-base-schema.yaml 2>/dev/null || {
+          echo "::warning::Could not read base schema from ${{ github.base_ref }}. Skipping drift check."
+          echo "breaking=0" >> $GITHUB_OUTPUT
+          exit 0
+        }
+        drift-guard openapi \
+          --base /tmp/drift-base-schema.yaml \
+          --head "${{ steps.schema.outputs.head }}" \
+          --format json > /tmp/drift-diff.json || true
+        BREAKING=$(python3 -c \
+          "import json,sys; d=json.load(open('/tmp/drift-diff.json')); print(d.get('summary',{}).get('breaking',0))" \
+          2>/dev/null || echo "0")
+        echo "breaking=$BREAKING" >> $GITHUB_OUTPUT
+        echo "[drift-agent] breaking changes: $BREAKING"
+
+    - name: Scan consumers and open issues
+      if: steps.diff.outputs.breaking != '0'
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+        ORG_READ_TOKEN: ${{ inputs.org-read-token != '' && inputs.org-read-token || github.token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+      run: |
+        drift-guard-agent \
+          --diff /tmp/drift-diff.json \
+          --org "${{ github.repository_owner }}" \
+          --token "$ORG_READ_TOKEN" \
+          --github-token "$GITHUB_TOKEN" \
+          --provider-repo "${{ github.repository }}" \
+          --pr "${{ github.event.pull_request.number }}"
