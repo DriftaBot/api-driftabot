@@ -1,0 +1,54 @@
+.PHONY: release major minor patch
+
+## Release targets
+##
+## Usage:
+##   make release          # bump patch → tag → push
+##   make release minor    # bump minor → tag → push
+##   make release major    # bump major → tag → push
+##
+## Pushing the semver tag triggers the release.yml workflow (PyPI publish + GitHub Release).
+## The floating vN tag is updated so that Action users pinned to e.g. @v1 get the latest patch.
+ifneq (,$(filter major,$(MAKECMDGOALS)))
+  _bump := major
+else ifneq (,$(filter minor,$(MAKECMDGOALS)))
+  _bump := minor
+else
+  _bump := patch
+endif
+
+major minor patch:
+	@true
+
+release:
+	@set -e; \
+	_CURRENT_TAG=$$(git tag --list 'v*.*.*' --points-at HEAD --sort=-version:refname | head -1); \
+	if [ -n "$$_CURRENT_TAG" ]; then \
+		echo "error: HEAD is already tagged as $$_CURRENT_TAG — commit new changes before releasing."; \
+		exit 1; \
+	fi; \
+	_TAG=$$(git log --decorate=short --pretty=format:"%D" | \
+	  while IFS= read -r _line; do \
+	    _t=$$(printf '%s' "$$_line" | grep -oE 'v[0-9]+\.[0-9]+\.[0-9]+' | sort -t. -k1,1 -k2,2n -k3,3n | tail -1); \
+	    if [ -n "$$_t" ]; then printf '%s\n' "$$_t"; break; fi; \
+	  done); \
+	if [ -z "$$_TAG" ]; then \
+		echo "error: no semver tag found in repo (expected v<major>.<minor>.<patch>)"; exit 1; \
+	fi; \
+	CURRENT=$$(echo "$$_TAG" | sed 's/^v//'); \
+	echo "Current: v$$CURRENT"; \
+	MAJOR=$$(echo "$$CURRENT" | cut -d. -f1); \
+	MINOR=$$(echo "$$CURRENT" | cut -d. -f2); \
+	PATCH=$$(echo "$$CURRENT" | cut -d. -f3); \
+	case "$(_bump)" in \
+		major) NEXT="v$$((MAJOR + 1)).0.0" ;; \
+		minor) NEXT="v$$MAJOR.$$((MINOR + 1)).0" ;; \
+		patch) NEXT="v$$MAJOR.$$MINOR.$$((PATCH + 1))" ;; \
+	esac; \
+	echo "Next:    $$NEXT"; \
+	git tag -f "$$NEXT"; \
+	git push origin "$$NEXT" --force; \
+	MAJOR_VER=$$(echo "$$NEXT" | grep -oE '^v[0-9]+'); \
+	git tag -f "$$MAJOR_VER"; \
+	git push origin "$$MAJOR_VER" --force; \
+	echo "Floating tag updated: $$MAJOR_VER -> $$NEXT"

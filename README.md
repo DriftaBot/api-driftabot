@@ -31,6 +31,8 @@ jobs:
 
 ## How it works
 
+Powered by [drift-guard-engine](https://pgomes13.github.io/drift-guard-engine/).
+
 1. Downloads the latest `drift-guard-engine` binary
 2. Compares the OpenAPI schema between base and head branch
 3. If breaking changes are found, searches the org for repos that reference those endpoints
