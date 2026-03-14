@@ -98,7 +98,7 @@ Provider PR opened
        │
        ▼
 ┌─────────────────────────────────────┐
-│  Download api-drift-engine binary   │
+│  Download driftabot binary          │
 │  Auto-detect schema type & compare  │
 │  (OpenAPI, GraphQL, or gRPC/proto)  │
 └─────────────────────────────────────┘
