@@ -60,6 +60,12 @@ def notify(state: DriftState) -> dict:
             if url:
                 issue_urls[repo] = url
 
+        # Close stale issues in repos that were discovered but no longer have hits
+        all_consumers = [c.full_name for c in state.get("consumers", [])]
+        stale_repos = [r for r in all_consumers if r not in issue_urls]
+        for repo in stale_repos:
+            _close_stale_issue(client, repo, provider_repo)
+
     return {"consumer_issues": consumer_issues, "issue_urls": issue_urls}
 
 
@@ -165,3 +171,30 @@ def _upsert_issue(
     except httpx.HTTPError as e:
         print(f"[notify] Failed to upsert issue in {repo}: {e}")
     return None
+
+
+def _close_stale_issue(client: httpx.Client, repo: str, provider_repo: str):
+    """Close any open drift-guard issue in repo that references provider_repo."""
+    try:
+        resp = client.get(
+            f"{_GITHUB_API}/repos/{repo}/issues",
+            params={"labels": _ISSUE_LABEL, "state": "open", "per_page": 10},
+        )
+        resp.raise_for_status()
+        matching = [i for i in resp.json() if provider_repo in i.get("title", "")]
+        for issue in matching:
+            n = issue["number"]
+            client.post(
+                f"{_GITHUB_API}/repos/{repo}/issues/{n}/comments",
+                json={"body": "✅ Breaking changes resolved — closing this issue."},
+            ).raise_for_status()
+            client.patch(
+                f"{_GITHUB_API}/repos/{repo}/issues/{n}",
+                json={"state": "closed"},
+            ).raise_for_status()
+            print(f"[notify] Closed stale issue #{n} in {repo}")
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code != 404:
+            print(f"[notify] Could not close stale issue in {repo}: {e}")
+    except httpx.HTTPError as e:
+        print(f"[notify] Could not close stale issue in {repo}: {e}")
