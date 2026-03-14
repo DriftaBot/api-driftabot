@@ -46,6 +46,7 @@ typeorm.DataSource.prototype.destroy = async function () { return; };
 import { NestFactory } from '@nestjs/core';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import * as fs from 'fs';
+import * as path from 'path';
 
 const OUTPUT = process.env.DRIFT_OUTPUT!;
 
