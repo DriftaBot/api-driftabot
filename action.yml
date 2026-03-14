@@ -78,11 +78,6 @@ runs:
         TYPE: ${{ steps.detect.outputs.type }}
       run: bash "$GITHUB_ACTION_PATH/action/compare.sh"
 
-    - name: Check permissions
-      if: steps.diff.outputs.breaking != '0'
-      shell: bash
-      run: bash "$GITHUB_ACTION_PATH/action/check-permissions.sh"
-
     - name: Scan consumers and open issues
       if: steps.diff.outputs.breaking != '0'
       shell: bash
