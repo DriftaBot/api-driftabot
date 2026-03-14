@@ -1,1 +1,1 @@
-"""drift-agent: LangGraph-powered AI analysis for API drift diffs."""
+"""api-driftabot: LangGraph-powered AI analysis for API drift diffs."""
