@@ -31,16 +31,7 @@ runs:
       shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
-      run: |
-        OS=$(uname -s | tr '[:upper:]' '[:lower:]')
-        ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64\|arm64/arm64/')
-        gh release download \
-          --repo pgomes13/drift-guard-engine \
-          --pattern "drift-guard_${OS}_${ARCH}.tar.gz" \
-          --dir /tmp \
-          --clobber
-        tar xz -C /usr/local/bin drift-guard < "/tmp/drift-guard_${OS}_${ARCH}.tar.gz"
-        echo "[drift-agent] drift-guard-engine installed: $(which drift-guard)"
+      run: bash "$GITHUB_ACTION_PATH/action/install-engine.sh"
 
     - name: Install drift-guard-agent
       shell: bash
@@ -66,78 +57,31 @@ runs:
 
     - name: Generate head schema
       shell: bash
-      run: |
-        TYPE="${{ steps.detect.outputs.type }}"
-        OVERRIDE_HEAD="${{ inputs.head-schema }}"
-        OVERRIDE_BASE="${{ inputs.base-schema }}"
-        if [ -n "$OVERRIDE_HEAD" ]; then
-          mkdir -p /tmp/specs
-          cp "$OVERRIDE_HEAD" /tmp/specs/head.yml
-          echo "[drift-agent] head schema: override $OVERRIDE_HEAD"
-        elif [ -n "$OVERRIDE_BASE" ]; then
-          mkdir -p /tmp/specs
-          cp "$OVERRIDE_BASE" /tmp/specs/head.yml
-          echo "[drift-agent] head schema: override $OVERRIDE_BASE"
-        else
-          bash /tmp/scripts/generate/${TYPE}.sh /tmp/specs/head.yml
-        fi
+      env:
+        TYPE: ${{ steps.detect.outputs.type }}
+        OVERRIDE_HEAD: ${{ inputs.head-schema }}
+        OVERRIDE_BASE: ${{ inputs.base-schema }}
+      run: bash "$GITHUB_ACTION_PATH/action/generate-head.sh"
 
     - name: Generate base schema
       shell: bash
-      run: |
-        TYPE="${{ steps.detect.outputs.type }}"
-        OVERRIDE_BASE="${{ inputs.base-schema }}"
-        if [ -n "$OVERRIDE_BASE" ]; then
-          GIT_PATH="${OVERRIDE_BASE#./}"
-          git show "origin/${{ github.base_ref }}:${GIT_PATH}" > /tmp/specs/base.yml 2>/dev/null || {
-            echo "::warning::Could not read $OVERRIDE_BASE from origin/${{ github.base_ref }} — using head as base"
-            cp /tmp/specs/head.yml /tmp/specs/base.yml
-          }
-          echo "[drift-agent] base schema: override $OVERRIDE_BASE from origin/${{ github.base_ref }}"
-        else
-          bash /tmp/scripts/generate-base.sh \
-            "$TYPE" \
-            "${{ github.base_ref }}" \
-            /tmp/specs/base.yml
-        fi
+      env:
+        TYPE: ${{ steps.detect.outputs.type }}
+        OVERRIDE_BASE: ${{ inputs.base-schema }}
+        BASE_REF: ${{ github.base_ref }}
+      run: bash "$GITHUB_ACTION_PATH/action/generate-base.sh"
 
     - name: Compare schemas
       id: diff
       shell: bash
-      run: |
-        TYPE="${{ steps.detect.outputs.type }}"
-        case "$TYPE" in
-          graphql) CMD="graphql" ;;
-          grpc)    CMD="grpc" ;;
-          *)       CMD="openapi" ;;
-        esac
-
-        if ! drift-guard "$CMD" \
-          --base /tmp/specs/base.yml \
-          --head /tmp/specs/head.yml \
-          --format json > /tmp/drift-diff.json; then
-          echo "::error::drift-guard-engine failed to diff $CMD schemas. Check that both schema files are valid."
-          exit 1
-        fi
-
-        BREAKING=$(python3 -c \
-          "import json; d=json.load(open('/tmp/drift-diff.json')); print(d.get('summary',{}).get('breaking',0))" \
-          2>/dev/null || echo "0")
-        echo "breaking=$BREAKING" >> $GITHUB_OUTPUT
-        echo "[drift-agent] $TYPE schema diff — breaking changes: $BREAKING"
+      env:
+        TYPE: ${{ steps.detect.outputs.type }}
+      run: bash "$GITHUB_ACTION_PATH/action/compare.sh"
 
     - name: Check permissions
       if: steps.diff.outputs.breaking != '0'
       shell: bash
-      run: |
-        PERM=$(curl -sSf \
-          -H "Authorization: Bearer ${{ github.token }}" \
-          -H "Accept: application/vnd.github+json" \
-          "https://api.github.com/repos/${{ github.repository }}" \
-          | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('permissions',{}).get('push',False))" 2>/dev/null || echo "False")
-        if [ "$PERM" != "True" ]; then
-          echo "::warning::drift-guard-agent: the GITHUB_TOKEN may not have 'issues: write'. Issues will not be created in consumer repos. Add 'issues: write' to your workflow permissions."
-        fi
+      run: bash "$GITHUB_ACTION_PATH/action/check-permissions.sh"
 
     - name: Scan consumers and open issues
       if: steps.diff.outputs.breaking != '0'
@@ -146,21 +90,10 @@ runs:
         GITHUB_TOKEN: ${{ github.token }}
         ORG_READ_TOKEN: ${{ inputs.org-read-token != '' && inputs.org-read-token || github.token }}
         ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
-      run: |
-        drift-guard-agent \
-          --diff /tmp/drift-diff.json \
-          --org "${{ github.repository_owner }}" \
-          --token "$ORG_READ_TOKEN" \
-          --github-token "$GITHUB_TOKEN" \
-          --provider-repo "${{ github.repository }}" \
-          --pr "${{ github.event.pull_request.number }}"
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+      run: bash "$GITHUB_ACTION_PATH/action/scan-consumers.sh"
 
     - name: Cleanup
       if: always()
       shell: bash
-      run: |
-        rm -rf /tmp/specs /tmp/scripts /tmp/drift-diff.json \
-               /tmp/drift-base-worktree /tmp/drift-guard-agent-clones \
-               /tmp/swag-docs
-        rm -f ./.drift-nestjs-gen.ts
-        echo "[drift-agent] cleanup done"
+      run: bash "$GITHUB_ACTION_PATH/action/cleanup.sh"
