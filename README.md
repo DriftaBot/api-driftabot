@@ -34,7 +34,7 @@ jobs:
 
 Powered by <a href="https://driftagent.github.io/api-drift-engine/" target="_blank">DriftAgent</a>.
 
-1. Downloads the latest `drift-guard-engine` binary
+1. Downloads the latest `api-drift-engine` binary
 2. Compares the OpenAPI schema between base and head branch
 3. If breaking changes are found, searches the org for repos that reference those endpoints
 4. Clones each consumer repo and scans for affected files

@@ -2,6 +2,91 @@
 
 `api-drift-agent` is a LangGraph-powered agentic workflow that detects breaking API changes in provider PRs, scans a configured list of consumer repos, and automatically opens GitHub Issues in any that are affected.
 
+## Quick start
+
+### Step 1 — Create a GitHub PAT
+
+Go to **GitHub → Settings → Developer settings → Personal access tokens → Fine-grained tokens** and create a token with:
+- **Repository access:** All repositories (or select your provider + consumer repos)
+- **Permissions:** `Contents: Read`, `Issues: Read and write`
+
+### Step 2 — Add the secret to your provider repo
+
+Go to your provider repo → **Settings → Secrets and variables → Actions → New repository secret** and add:
+
+| Secret name | Value |
+|---|---|
+| `ORG_READ_TOKEN` | The PAT from Step 1 |
+| `ANTHROPIC_API_KEY` | _(optional)_ Anthropic key — enables Claude risk analysis in issues |
+
+### Step 3 — Add the workflow file
+
+Create `.github/workflows/api-drift-check.yml` in your provider repo:
+
+```yaml
+name: API Drift Check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: DriftAgent/api-drift-agent@v1
+        with:
+          org-read-token: ${{ secrets.ORG_READ_TOKEN }}
+          consumer-repos: |
+            your-org/service-a
+            your-org/service-b
+          # anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+```
+
+Replace `your-org/service-a` etc. with the repos that consume your API.
+
+### Step 4 — Open a PR with a breaking change
+
+Open a pull request in your provider repo that removes or renames an API endpoint. The action runs automatically and within about a minute you'll see:
+
+**A comment posted on your PR:**
+
+> ⚠️ **API Drift Agent Report — 1 breaking change detected**
+>
+> **Breaking changes**
+>
+> | Path | Description |
+> | ---- | ----------- |
+> | `/users/{id}` | endpoint removed |
+>
+> **Affected consumer repos**
+>
+> Issues have been opened in **1** affected consumer repo:
+>
+> | Issue |
+> | ----- |
+> | your-org/service-a #42 |
+>
+> _Update consumer repos before merging this PR._
+
+**A GitHub Issue opened in each consumer repo** that references the removed endpoint, listing the exact files and line numbers where the breakage will occur at runtime.
+
+### Step 5 — Fix the breaking change (or update consumers)
+
+When the breaking changes are resolved — either by reverting them in the provider PR or by updating all consumer repos — re-run the action. It will:
+
+- Close the open issues in consumer repos with a "Breaking changes resolved" comment
+- Update the PR comment to show ✅ **no breaking changes detected**
+
+No changes are ever needed in consumer repos to set this up — the agent discovers and notifies them automatically.
+
 ## How it works
 
 ```
@@ -9,7 +94,7 @@ Provider PR opened
        │
        ▼
 ┌─────────────────────────────────────┐
-│  Download drift-guard-engine binary │
+│  Download api-drift-engine binary   │
 │  Auto-detect schema type & compare  │
 │  (OpenAPI, GraphQL, or gRPC/proto)  │
 └─────────────────────────────────────┘

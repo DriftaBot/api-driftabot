@@ -10,7 +10,7 @@ hero:
       link: /guide
     - theme: alt
       text: Take Tour
-      link: /guide#how-it-works
+      link: /guide#quick-start
     - theme: alt
       text: View on GitHub
       link: https://github.com/DriftAgent/api-drift-agent
