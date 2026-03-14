@@ -39,7 +39,7 @@ jobs:
 
 ## How it works
 
-Powered by <a href="https://driftabot.github.io/api-drift-engine/" target="_blank">DriftaBot</a>.
+Powered by <a href="https://driftabot.github.io/engine/" target="_blank">DriftaBot Engine</a>.
 
 1. Downloads the latest `api-drift-engine` binary
 2. Compares the OpenAPI schema between base and head branch
