@@ -149,5 +149,10 @@ def _upsert_issue(
             ).raise_for_status()
             print(f"[notify] Opened issue in {repo}")
 
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code == 403:
+            print(f"::warning::drift-guard-agent: missing 'issues: write' permission for {repo} — issue not created")
+        else:
+            print(f"[notify] Failed to upsert issue in {repo}: {e}")
     except httpx.HTTPError as e:
         print(f"[notify] Failed to upsert issue in {repo}: {e}")

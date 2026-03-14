@@ -72,15 +72,31 @@ runs:
           echo "breaking=0" >> $GITHUB_OUTPUT
           exit 0
         }
-        drift-guard openapi \
+        if ! drift-guard openapi \
           --base /tmp/drift-base-schema.yaml \
           --head "${{ steps.schema.outputs.head }}" \
-          --format json > /tmp/drift-diff.json || true
+          --format json > /tmp/drift-diff.json; then
+          echo "::error::drift-guard-engine failed to diff schemas. Check that both schema files are valid OpenAPI."
+          exit 1
+        fi
         BREAKING=$(python3 -c \
           "import json,sys; d=json.load(open('/tmp/drift-diff.json')); print(d.get('summary',{}).get('breaking',0))" \
           2>/dev/null || echo "0")
         echo "breaking=$BREAKING" >> $GITHUB_OUTPUT
         echo "[drift-agent] breaking changes: $BREAKING"
+
+    - name: Check permissions
+      if: steps.diff.outputs.breaking != '0'
+      shell: bash
+      run: |
+        PERM=$(curl -sSf \
+          -H "Authorization: Bearer ${{ github.token }}" \
+          -H "Accept: application/vnd.github+json" \
+          "https://api.github.com/repos/${{ github.repository }}" \
+          | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('permissions',{}).get('push',False))" 2>/dev/null || echo "False")
+        if [ "$PERM" != "True" ]; then
+          echo "::warning::drift-guard-agent: the GITHUB_TOKEN may not have 'issues: write'. Issues will not be created in consumer repos. Add 'issues: write' to your workflow permissions."
+        fi
 
     - name: Scan consumers and open issues
       if: steps.diff.outputs.breaking != '0'
