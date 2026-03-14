@@ -68,6 +68,7 @@ class DriftState(TypedDict):
 
     # Outputs
     consumer_issues: Dict[str, str]              # repo full_name → issue body
+    issue_urls: Dict[str, str]                   # repo full_name → issue HTML URL
 
 
 def initial_state(**kwargs) -> DriftState:
@@ -84,5 +85,6 @@ def initial_state(**kwargs) -> DriftState:
         "hits": {},
         "explanations": {},
         "consumer_issues": {},
+        "issue_urls": {},
     }
     return {**defaults, **kwargs}

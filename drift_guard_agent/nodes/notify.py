@@ -41,11 +41,11 @@ def notify(state: DriftState) -> dict:
         for repo, body in consumer_issues.items():
             print(f"\nISSUE [{repo}]:\n{body}\n")
         print("=" * 60)
-        return {"consumer_issues": consumer_issues}
+        return {"consumer_issues": consumer_issues, "issue_urls": {}}
 
     if not github_token:
         print("[notify] No GITHUB_TOKEN — skipping issue creation")
-        return {"consumer_issues": consumer_issues}
+        return {"consumer_issues": consumer_issues, "issue_urls": {}}
 
     headers = {
         "Authorization": f"Bearer {github_token}",
@@ -53,11 +53,14 @@ def notify(state: DriftState) -> dict:
         "X-GitHub-Api-Version": "2022-11-28",
     }
 
+    issue_urls: dict[str, str] = {}
     with httpx.Client(headers=headers, timeout=30) as client:
         for repo, body in consumer_issues.items():
-            _upsert_issue(client, repo, body, provider_repo, pr_number)
+            url = _upsert_issue(client, repo, body, provider_repo, pr_number)
+            if url:
+                issue_urls[repo] = url
 
-    return {"consumer_issues": consumer_issues}
+    return {"consumer_issues": consumer_issues, "issue_urls": issue_urls}
 
 
 def _build_issue_body(
@@ -114,7 +117,8 @@ def _upsert_issue(
     body: str,
     provider_repo: str,
     pr_number: int,
-):
+) -> str | None:
+    """Create or update a drift-guard issue in repo. Returns the issue HTML URL or None on failure."""
     title = f"⚠️ Breaking API changes from {provider_repo}" + (f" (PR #{pr_number})" if pr_number else "")
 
     # Ensure the label exists
@@ -137,17 +141,21 @@ def _upsert_issue(
 
         if existing:
             issue_number = existing[0]["number"]
-            client.patch(
+            r = client.patch(
                 f"{_GITHUB_API}/repos/{repo}/issues/{issue_number}",
                 json={"title": title, "body": body},
-            ).raise_for_status()
+            )
+            r.raise_for_status()
             print(f"[notify] Updated issue #{issue_number} in {repo}")
+            return r.json().get("html_url")
         else:
-            client.post(
+            r = client.post(
                 f"{_GITHUB_API}/repos/{repo}/issues",
                 json={"title": title, "body": body, "labels": [_ISSUE_LABEL]},
-            ).raise_for_status()
+            )
+            r.raise_for_status()
             print(f"[notify] Opened issue in {repo}")
+            return r.json().get("html_url")
 
     except httpx.HTTPStatusError as e:
         if e.response.status_code == 403:
@@ -156,3 +164,4 @@ def _upsert_issue(
             print(f"[notify] Failed to upsert issue in {repo}: {e}")
     except httpx.HTTPError as e:
         print(f"[notify] Failed to upsert issue in {repo}: {e}")
+    return None

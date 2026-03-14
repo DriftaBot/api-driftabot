@@ -13,6 +13,7 @@ from drift_guard_agent.nodes.explain import explain
 from drift_guard_agent.nodes.fetch import fetch_consumers
 from drift_guard_agent.nodes.ingest import ingest
 from drift_guard_agent.nodes.notify import notify
+from drift_guard_agent.nodes.pr_comment import pr_comment
 from drift_guard_agent.nodes.scan import scan_consumers
 from drift_guard_agent.state import DriftState
 
@@ -54,6 +55,7 @@ def build_graph(checkpointer=None) -> StateGraph:
     builder.add_node("scan_consumers", scan_consumers)
     builder.add_node("explain", explain)
     builder.add_node("notify", notify)
+    builder.add_node("pr_comment", pr_comment)
 
     builder.add_edge(START, "ingest")
     builder.add_conditional_edges("ingest", _route_after_ingest)
@@ -61,6 +63,7 @@ def build_graph(checkpointer=None) -> StateGraph:
     builder.add_edge("fetch_consumers", "scan_consumers")
     builder.add_conditional_edges("scan_consumers", _route_after_scan)
     builder.add_edge("explain", "notify")
-    builder.add_edge("notify", END)
+    builder.add_edge("notify", "pr_comment")
+    builder.add_edge("pr_comment", END)
 
     return builder.compile(checkpointer=checkpointer or MemorySaver())
