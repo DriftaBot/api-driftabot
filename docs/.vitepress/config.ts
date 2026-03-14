@@ -3,13 +3,13 @@ import { defineConfig } from 'vitepress'
 export default defineConfig({
   title: 'API Drift Agent',
   description: 'Detect breaking API changes in provider PRs and automatically open GitHub Issues in affected consumer repos.',
-  base: '/api-drift-agent/',
+  base: '/api-driftabot/',
 
   themeConfig: {
     nav: [
       { text: 'Guide', link: '/guide' },
       { text: 'CLI', link: '/cli' },
-      { text: 'GitHub', link: 'https://github.com/DriftaBot/api-drift-agent', target: '_blank' },
+      { text: 'GitHub', link: 'https://github.com/DriftaBot/api-driftabot', target: '_blank' },
     ],
 
     sidebar: [
@@ -31,7 +31,7 @@ export default defineConfig({
     ],
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/DriftaBot/api-drift-agent' },
+      { icon: 'github', link: 'https://github.com/DriftaBot/api-driftabot' },
     ],
 
     footer: {
