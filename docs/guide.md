@@ -1,6 +1,6 @@
 # Guide
 
-`api-drift-agent` is a LangGraph-powered agentic workflow that detects breaking API changes in provider PRs, scans a configured list of consumer repos, and automatically opens GitHub Issues in any that are affected.
+`api-drift-agent` detects breaking API changes in provider PRs, scans a configured list of consumer repos, and automatically opens GitHub Issues in any that are affected — zero setup required on the consumer side.
 
 ## Quick start
 
@@ -10,14 +10,14 @@ Go to **GitHub → Settings → Developer settings → Personal access tokens �
 - **Repository access:** All repositories (or select your provider + consumer repos)
 - **Permissions:** `Contents: Read`, `Issues: Read and write`
 
-### Step 2 — Add the secret to your provider repo
+### Step 2 — Add secrets to your provider repo
 
-Go to your provider repo → **Settings → Secrets and variables → Actions → New repository secret** and add:
+Go to **Settings → Secrets and variables → Actions → New repository secret** and add:
 
 | Secret name | Value |
 |---|---|
 | `ORG_READ_TOKEN` | The PAT from Step 1 |
-| `ANTHROPIC_API_KEY` | _(optional)_ Anthropic key — enables Claude risk analysis in issues |
+| `ANTHROPIC_API_KEY` | _(optional)_ Enables Claude risk analysis in opened issues |
 
 ### Step 3 — Add the workflow file
 
@@ -54,7 +54,7 @@ Replace `your-org/service-a` etc. with the repos that consume your API.
 
 ### Step 4 — Open a PR with a breaking change
 
-Open a pull request in your provider repo that removes or renames an API endpoint. The action runs automatically and within about a minute you'll see:
+Open a pull request that removes or renames an API endpoint. Within about a minute you'll see:
 
 **A comment posted on your PR:**
 
@@ -76,16 +76,13 @@ Open a pull request in your provider repo that removes or renames an API endpoin
 >
 > _Update consumer repos before merging this PR._
 
-**A GitHub Issue opened in each consumer repo** that references the removed endpoint, listing the exact files and line numbers where the breakage will occur at runtime.
+**A GitHub Issue opened in each affected consumer repo**, listing the exact files and line numbers where the breakage will occur at runtime.
 
-### Step 5 — Fix the breaking change (or update consumers)
+### Step 5 — Fix and re-run
 
-When the breaking changes are resolved — either by reverting them in the provider PR or by updating all consumer repos — re-run the action. It will:
-
-- Close the open issues in consumer repos with a "Breaking changes resolved" comment
-- Update the PR comment to show ✅ **no breaking changes detected**
-
-No changes are ever needed in consumer repos to set this up — the agent discovers and notifies them automatically.
+Once breaking changes are resolved, re-run the action. It will:
+- Close open issues in consumer repos with a "Breaking changes resolved" comment
+- Update the PR comment to ✅ **no breaking changes detected**
 
 ## How it works
 
@@ -112,7 +109,7 @@ Provider PR opened
 │  Clone each consumer repo           │
 │  Scan for affected files            │
 │  Open (or update) a GitHub Issue    │
-│  Post DriftAgent Report on PR       │
+│  Post Drift Agent Report on PR      │
 └─────────────────────────────────────┘
        │ PR re-run / changes fixed
        ▼
@@ -122,70 +119,34 @@ Provider PR opened
 └─────────────────────────────────────┘
 ```
 
-## Prerequisites
-
-- Create a GitHub Personal Access Token (PAT) with `repo` and `read:org` scopes. This is required to clone and open issues in consumer repos. Add it as a repository secret named `ORG_READ_TOKEN` (**Settings → Secrets and variables → Actions → New repository secret**).
-- Optionally, add an `ANTHROPIC_API_KEY` secret to enable Claude-powered risk analysis in the issues the agent opens.
-
-## Usage
-
-Add to your **provider** repo's workflow:
-
-```yaml
-name: API Drift Check
-
-on:
-  pull_request:
-
-permissions:
-  contents: read
-  issues: write
-
-jobs:
-  drift:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: DriftAgent/api-drift-agent@v1
-        with:
-          org-read-token: ${{ secrets.ORG_READ_TOKEN }}
-          consumer-repos: |
-            your-org/service-a
-            your-org/service-b
-          # anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}  # optional: enables AI risk analysis
-```
-
 ## Inputs
 
 | Input | Required | Description |
 |---|---|---|
-| `base-schema` | No | Path to schema file (auto-detected if omitted). Supports OpenAPI (`.yaml`/`.yml`/`.json`), GraphQL (`.graphql`/`.gql`), and Protobuf (`.proto`). |
-| `head-schema` | No | Path on PR branch (defaults to `base-schema`) |
-| `org-read-token` | No | PAT with `repo` + `read:org` scopes. Required to clone consumer repos and open issues in them. Falls back to `GITHUB_TOKEN` (cannot open issues in other repos). |
-| `consumer-repos` | No | Newline or comma-separated list of consumer repos to scan (e.g. `org/repo`). When omitted, no scan is conducted and the PR comment will include setup instructions. |
-| `anthropic-api-key` | No | Enables Claude risk analysis in opened issues |
+| `org-read-token` | No | PAT with `repo` + `read:org` scopes. Required to clone consumer repos and open issues in them. Falls back to `GITHUB_TOKEN` (which cannot open issues in other repos). |
+| `consumer-repos` | No | Newline or comma-separated list of `owner/repo` to scan. When omitted, the PR comment includes setup instructions and no scan is run. |
+| `base-schema` | No | Path to schema file. Auto-detected if omitted — supports OpenAPI (`.yaml`/`.yml`/`.json`), GraphQL (`.graphql`/`.gql`), and Protobuf (`.proto`). |
+| `head-schema` | No | Path on the PR branch. Defaults to `base-schema`. |
+| `anthropic-api-key` | No | Enables Claude risk analysis in opened issues. |
 
 ## Re-run behaviour
 
-The agent is fully idempotent across CI rebuilds:
+The agent is fully idempotent — safe to re-run at any time:
 
 | Scenario | PR comment | Consumer issues |
 |---|---|---|
 | Re-run, same breaking changes | Updated in-place | Updated in-place — no duplicates |
 | Re-run, more breaking changes | Updated in-place | Updated in-place |
 | PR fixed — breaking changes gone | Updated → ✅ all clear | Closed with "Breaking changes resolved" |
-| Breaking changes found, no `consumer-repos` configured | Posted with breaking changes table + setup instructions | Nothing touched |
+| Breaking changes found, no `consumer-repos` configured | Posted with breaking changes + setup instructions | Nothing touched |
 | Clean PR, no previous activity | Nothing posted | Nothing touched |
 
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Action fails: "No API schema found" | Schema file not at a standard path, or generated at runtime and not committed | Set the `base-schema` input explicitly |
-| Action fails: "drift-guard-engine failed to diff schemas" | Schema file is invalid or malformed | Validate locally: `drift-guard openapi --base ... --head ...` (or `graphql`/`grpc`) |
-| Issues created but no AI explanations | `ANTHROPIC_API_KEY` not set | Set the secret in your repo — the agent runs without it but skips Claude risk analysis |
-| No issues created in consumer repos | `org-read-token` not set, or PAT has insufficient scope | Set `org-read-token` to a PAT with `repo` + `read:org` scopes |
-| PR comment shows "no consumer scan conducted" | `consumer-repos` input not set | Add the `consumer-repos` input listing repos to scan |
+| Action fails: "No API schema found" | Schema not at a standard path, or generated at runtime | Set `base-schema` explicitly |
+| Action fails: schema diff error | Schema file is invalid or malformed | Validate locally: `drift-guard openapi --base ... --head ...` (or `graphql`/`grpc`) |
+| Issues created but no AI explanations | `ANTHROPIC_API_KEY` not set | Add the secret — the agent works without it but skips risk analysis |
+| No issues created in consumer repos | `org-read-token` missing or insufficient scope | Set a PAT with `repo` + `read:org` scopes |
+| PR comment: "no consumer scan conducted" | `consumer-repos` not set | Add the `consumer-repos` input |
