@@ -39,11 +39,11 @@ runs:
           --dir /tmp \
           --clobber
         tar xz -C /usr/local/bin drift-guard < "/tmp/drift-guard_${OS}_${ARCH}.tar.gz"
-        echo "[drift-agent] drift-guard-engine $(drift-guard --version 2>/dev/null || true)"
+        echo "[drift-agent] drift-guard-engine installed: $(which drift-guard)"
 
     - name: Install drift-guard-agent
       shell: bash
-      run: pip install --quiet drift-guard-agent
+      run: pip install --quiet "$GITHUB_ACTION_PATH"
 
     - name: Detect schema path
       id: schema
