@@ -65,7 +65,7 @@ Open a pull request that removes or renames an API endpoint. Within about a minu
 
 **A comment posted on your PR:**
 
-> ⚠️ **API Drift Agent Report — 1 breaking change detected**
+> ⚠️ **DriftaBot Agent Report — 1 breaking change detected**
 >
 > **Breaking changes**
 >

@@ -1,4 +1,4 @@
-name: 'API Drift Agent'
+name: 'DriftaBot Agent'
 description: 'Detect breaking API changes in a PR and open GitHub Issues in affected consumer repos — zero config on consumer side.'
 author: 'pgomes13'
 
