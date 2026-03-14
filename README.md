@@ -25,7 +25,7 @@ jobs:
         with:
           fetch-depth: 0
 
-      - uses: DriftaBot/agent@v1
+      - uses: DriftaBot/agent@v2
         with:
           org-read-token: ${{ secrets.ORG_READ_TOKEN }}
 ```
