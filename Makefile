@@ -1,4 +1,17 @@
-.PHONY: release major minor patch
+.PHONY: commit release major minor patch
+
+## Commit: stage all changes, commit with a message, and push to the current branch.
+##
+## Usage:
+##   make commit   # prompts for commit message
+##
+commit:
+	@read -p "Commit message: " msg; \
+	git add .; \
+	git commit -m "$$msg"; \
+	git push origin $$(git rev-parse --abbrev-ref HEAD)
+
+
 
 ## Release targets
 ##
@@ -7,7 +20,7 @@
 ##   make release minor    # bump minor → tag → push
 ##   make release major    # bump major → tag → push
 ##
-## Pushing the semver tag triggers the release.yml workflow (PyPI publish + GitHub Release).
+## Pushing the semver tag triggers the release.yml workflow (GitHub Release + Marketplace update).
 ## The floating vN tag is updated so that Action users pinned to e.g. @v1 get the latest patch.
 ifneq (,$(filter major,$(MAKECMDGOALS)))
   _bump := major
