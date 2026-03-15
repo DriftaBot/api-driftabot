@@ -12,6 +12,10 @@ hero:
       text: GitHub Marketplace
       link: https://github.com/marketplace/actions/driftabot-agent
       target: _blank
+    - theme: brand
+      text: Public API Specs ↗
+      link: https://driftabot.github.io/specs
+      target: _blank
 
 features:
   - title: Auto-detect schemas
